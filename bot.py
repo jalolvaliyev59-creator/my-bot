@@ -1,12 +1,14 @@
 import os
 import logging
 import asyncio
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import uuid
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-API_TOKEN = os.getenv("BOT_TOKEN", "8510258357:AAFbZZOu1gmnGP34mPqLnxMpIS8-ibKtIpE")
+# Tokenni faqat muhit o'zgaruvchisidan olamiz (Xavfsizlik uchun)
+API_TOKEN = os.getenv("BOT_TOKEN")
+if not API_TOKEN:
+    raise ValueError("DIQQAT: BOT_TOKEN muhit o'zgaruvchisida topilmadi!")
 
 logging.basicConfig(level=logging.INFO)
 
@@ -46,29 +48,35 @@ async def handle_choice(message: types.Message):
 
 async def download_video(message: types.Message, url: str):
     status_msg = await message.reply("⏳ Video yuklanmoqda, iltimos kuting...")
-    output_file = f"video_{message.from_user.id}.mp4"
+    # Unikal ID orqali fayl nomlari to'qnashib ketishining oldini olamiz
+    unique_name = str(uuid.uuid4())[:8]
+    output_file = f"video_{message.from_user.id}_{unique_name}.mp4"
     
     try:
         process = await asyncio.create_subprocess_exec(
-            "yt-dlp", "-f", "b[filesize<50M]/best", "-o", output_file, url,
+            "yt-dlp", "-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4", "-o", output_file, url,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        await process.communicate()
+        stdout, stderr = await process.communicate()
         
         if os.path.exists(output_file):
-            await message.reply_video(open(output_file, 'rb'), caption="🎬 Videongiz tayyor!")
-            os.remove(output_file)
+            with open(output_file, 'rb') as video_file:
+                await message.reply_video(video_file, caption="🎬 Videongiz tayyor!")
         else:
-            await message.reply("❌ Videoni yuklab bo'lmadi.")
+            error_text = stderr.decode('utf-8', errors='ignore')[:300]
+            await message.reply(f"❌ Yuklab bo'lmadi. Xatolik:\n<code>{error_text}</code>", parse_mode="HTML")
     except Exception as e:
         await message.reply(f"Xatolik yuz berdi: {e}")
     finally:
+        if os.path.exists(output_file):
+            os.remove(output_file)
         await bot.delete_message(message.chat.id, status_msg.message_id)
 
 async def download_audio(message: types.Message, url: str):
     status_msg = await message.reply("⏳ Musiqa ajratib olinmoqda, iltimos kuting...")
-    output_file = f"audio_{message.from_user.id}.mp3"
+    unique_name = str(uuid.uuid4())[:8]
+    output_file = f"audio_{message.from_user.id}_{unique_name}.mp3"
     
     try:
         process = await asyncio.create_subprocess_exec(
@@ -76,36 +84,20 @@ async def download_audio(message: types.Message, url: str):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        await process.communicate()
+        stdout, stderr = await process.communicate()
         
         if os.path.exists(output_file):
-            await message.reply_audio(open(output_file, 'rb'), caption="🎵 Musiqangiz tayyor!")
-            os.remove(output_file)
+            with open(output_file, 'rb') as audio_file:
+                await message.reply_audio(audio_file, caption="🎵 Musiqangiz tayyor!")
         else:
-            await message.reply("❌ Musiqani ajratib bo'lmadi.")
+            error_text = stderr.decode('utf-8', errors='ignore')[:300]
+            await message.reply(f"❌ Musiqani olib bo'lmadi. Xatolik:\n<code>{error_text}</code>", parse_mode="HTML")
     except Exception as e:
         await message.reply(f"Xatolik yuz berdi: {e}")
     finally:
+        if os.path.exists(output_file):
+            os.remove(output_file)
         await bot.delete_message(message.chat.id, status_msg.message_id)
 
-# --- Render port talabini qondirish uchun oddiy HTTP server ---
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
-    def log_message(self, format, *args):
-        pass # Loglarni to'ldirmasligi uchun
-
-def run_server():
-    port = int(os.getenv("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-    server.serve_forever()
-
 if __name__ == '__main__':
-    # Serverni alohida oqimda (thread) ishga tushiramiz
-    server_thread = threading.Thread(target=run_server, daemon=True)
-    server_thread.start()
-    
-    # Asosiy oqimda Telegram bot ishlaydi
     executor.start_polling(dp, skip_updates=True)
