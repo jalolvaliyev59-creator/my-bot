@@ -1,4 +1,27 @@
-go func() {
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"os"
+	// sizning boshqa importlaringiz (masalan telegram bot kutubxonasi)...
+)
+
+func main() {
+	// Render port so'ragani uchun soxta HTTP server
+	go func() {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintln(w, "Bot is running!")
+		})
+		http.ListenAndServe(":"+port, nil)
+	}()
+
+	// Botingizning qolgan asosiy kodlari...
+}go func() {
     port := os.Getenv("PORT")
     if port == "" {
         port = "8080"
